@@ -16,19 +16,21 @@ class TabsApp(App):
         "Fetch and handle guitar parts from provided list of URL and output "
         "aggregated result (to file if provided, clipboard, or stdout)."
     )
-    
+
     def init_parser(self, parser):
         parser.add_argument("urls", nargs="*", type=str, metavar="URL")
         parser.add_argument("-l", "--list", type=Path, help="Input URL list to fetch.")
         parser.add_argument("-c", "--clipboard", action="store_true", help="Copy to clipboard.")
         parser.add_argument("-o", "--output", type=Path, help="Output result to file.")
-        parser.add_argument("--rtf", action="store_true", help="Output to RTF format (following LibreOffice convention)")
+        parser.add_argument(
+            "--rtf", action="store_true", help="Output to RTF format (following LibreOffice convention)"
+        )
 
     def run(self, urls, list=None, clipboard=False, output=None, rtf=False, **_):
         if list:
             with open(list) as f:
                 lines = f.read().split("\n")
-                urls.extend(l.strip() for l in lines if l)
+                urls.extend(line.strip() for line in lines if line)
 
         tabs_list = self.get_tabs_list(urls)
         renderer = self.get_renderer(rtf=rtf)
@@ -58,15 +60,18 @@ class TabsApp(App):
                 self.logs.success("  done!")
             except Exception as e:
                 import traceback
+
                 traceback.print_exc()
                 self.logs.error(f"  error: {e}")
+
+        tabs_list.sort(key=lambda t: (t.artist, t.title))
         return tabs_list
 
     def get_renderer(self, rtf=False):
         if rtf:
             return renderers.RTFRenderer()
         return renderers.Renderer()
-    
+
     def to_clipboard(self, mime, text):
         process = Popen(["xclip", "-t", mime, "-selection", "clipboard"], stdin=PIPE)
         process.communicate(text.encode("utf8"))
@@ -74,4 +79,3 @@ class TabsApp(App):
 
 
 apps = TabsApp()
-
