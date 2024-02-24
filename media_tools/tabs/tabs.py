@@ -16,12 +16,12 @@ class Line:
         CHORDS = 0x01
 
     type = None
-    """ Type """
+    """Type."""
     text = ""
-    """ Content plain text """
+    """Content plain text."""
     chords = None
-    """ set of extracted chords (on Type.CHORDS) """
-    
+    """set of extracted chords (on Type.CHORDS)"""
+
     def __init__(self, type, text="", chords=None):
         self.type = type
         self.text = text
@@ -42,7 +42,7 @@ class Line:
 
         # chords
         if self.type == self.Type.CHORDS:
-            chords = set(c for c in self.text.split(" ") if c and c not in self._not_a_chord)
+            chords = set(c.replace("|", "") for c in self.text.split(" ") if c and c not in self._not_a_chord)
             self.chords = chords
 
     def add(self, text):
@@ -60,16 +60,15 @@ class Line:
 class Tabs:
     hosts = []
 
-    
     artist = ""
-    """ Artist name. """
+    """Artist name."""
     title = ""
-    """ Song title. """
+    """Song title."""
     chords = set()
-    """ Chords discovered """
+    """Chords discovered."""
     lines = None
-    """ Read lines """
-    
+    """Read lines."""
+
     def __init__(self, text=None, **kwargs):
         self.text = text
         self.chords = set()
@@ -81,8 +80,7 @@ class Tabs:
     def from_http(cls, url):
         resp = requests.get(url)
         if resp.status_code != 200:
-            raise RuntimeError(f"Error loading {url}: response status: " \
-                               f"{resp.status_code}.")
+            raise RuntimeError(f"Error loading {url}: response status: " f"{resp.status_code}.")
         return cls(resp.text)
 
     @classmethod
@@ -103,6 +101,7 @@ class Tabs:
             self.done()
         except Exception:
             import traceback
+
             traceback.print_exc()
             raise
 
@@ -132,12 +131,13 @@ class Tabs:
 
 class BaseXMLTabs(Tabs):
     xml_root = re.compile("<body>(.*)</body>", re.S | re.I)
-    """ Root node to content. """
+    """Root node to content."""
     xml_clean = (
         re.compile("<style>(.*?)</style>", re.S | re.I),
         re.compile("<script>(.*?)</script>", re.S | re.I),
     )
-    """ Remove content inside root matching provided regexps. """
+    """Remove content inside root matching provided regexps."""
+
     def read(self, text, **kwargs):
         # should be moved to parse()
         root_match = self.xml_root.search(text)
@@ -149,21 +149,24 @@ class BaseXMLTabs(Tabs):
         parser = ET.XMLParser(recover=True)
         root = ET.fromstring(f"<section>{text}</section>", parser)
 
-        kwargs.update({
-            "parser": parser,
-            "root": root,
-        })
+        kwargs.update(
+            {
+                "parser": parser,
+                "root": root,
+            }
+        )
         return super().read(text, **kwargs)
 
 
 class XMLTabs(BaseXMLTabs):
-    """ Parse and extract tabs from xml document. """
+    """Parse and extract tabs from xml document."""
+
     artist_xpath = ""
-    """ xpath to artist. """
+    """xpath to artist."""
     title_xpath = ""
-    """ xpath to title. """
+    """xpath to title."""
     lines_xpath = ""
-    """ xpath to lines. """
+    """xpath to lines."""
 
     def get_artist(self, data, root, **_):
         if self.artist_xpath:
@@ -200,4 +203,3 @@ class ReactTabs(BaseXMLTabs):
         raw = node.attrib[self.js_store_attr]
         raw = html.unescape(raw)
         return json.loads(raw)
-   
