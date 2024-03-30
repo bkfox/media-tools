@@ -27,10 +27,12 @@ class TabsApp(App):
         )
 
     def run(self, urls, list=None, clipboard=False, output=None, rtf=False, **_):
+        urls = set(urls)
+
         if list:
             with open(list) as f:
                 lines = f.read().split("\n")
-                urls.extend(line.strip() for line in lines if line)
+                urls = urls | {line.strip() for line in lines if line}
 
         tabs_list = self.get_tabs_list(urls)
         renderer = self.get_renderer(rtf=rtf)
