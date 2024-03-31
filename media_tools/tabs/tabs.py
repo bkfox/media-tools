@@ -130,6 +130,7 @@ class Tabs:
 
 
 class BaseXMLTabs(Tabs):
+    xml_parser = ET.XMLParser
     xml_root = re.compile("<body>(.*)</body>", re.S | re.I)
     """Root node to content."""
     xml_clean = (
@@ -146,7 +147,7 @@ class BaseXMLTabs(Tabs):
             for reg in self.xml_clean:
                 text = reg.sub("", text)
 
-        parser = ET.XMLParser(recover=True)
+        parser = self.xml_parser(recover=True)
         root = ET.fromstring(f"<section>{text}</section>", parser)
 
         kwargs.update(
@@ -192,6 +193,8 @@ class XMLTabs(BaseXMLTabs):
 
 
 class ReactTabs(BaseXMLTabs):
+    xml_parser = ET.HTMLParser
+    unescape_html = True
     js_store_xpath = ""
     js_store_attr = "data-content"
 
@@ -202,4 +205,5 @@ class ReactTabs(BaseXMLTabs):
         node = root.find(self.js_store_xpath)
         raw = node.attrib[self.js_store_attr]
         raw = html.unescape(raw)
+        breakpoint()
         return json.loads(raw)
