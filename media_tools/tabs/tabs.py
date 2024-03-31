@@ -194,7 +194,6 @@ class XMLTabs(BaseXMLTabs):
 
 class ReactTabs(BaseXMLTabs):
     xml_parser = ET.HTMLParser
-    unescape_html = True
     js_store_xpath = ""
     js_store_attr = "data-content"
 
