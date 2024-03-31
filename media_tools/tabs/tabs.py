@@ -204,5 +204,4 @@ class ReactTabs(BaseXMLTabs):
         node = root.find(self.js_store_xpath)
         raw = node.attrib[self.js_store_attr]
         raw = html.unescape(raw)
-        breakpoint()
         return json.loads(raw)
