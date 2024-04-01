@@ -2,23 +2,24 @@ from .tabs import Line, XMLTabs
 
 
 class InterleavedXMLTabs(XMLTabs):
-    """
-    Read tabs interleaved from XML tree. Asssumes:
+    """Read tabs interleaved from XML tree. Asssumes:
+
     - only accords are wrapped in tag
     - defaults: https://boiteachansons.net/
     """
+
     chord_tag = ""
-    """ Tag use for chord """
+    """Tag use for chord."""
     chord_class = ""
-    """ Class used to find chord """
+    """Class used to find chord."""
     chord_text_xpath = ""
-    """ Xpath to text inside chord """
+    """Xpath to text inside chord."""
     chord_text_attr = ""
-    """ Attribute to get chord value from XML node. """
+    """Attribute to get chord value from XML node."""
 
     def parse_line(self, line):
         chords = Line(Line.Type.CHORDS)
-        lyrics = Line(Line.Type.LYRIC, line.text.lstrip())
+        lyrics = Line(Line.Type.LYRIC, (line.text or "").lstrip())
         for child in line:
             cl = child.attrib.get("class")
             match child.tag:
@@ -45,4 +46,3 @@ class InterleavedXMLTabs(XMLTabs):
         if not chord:
             chord = child.text
         return chord or ""
-

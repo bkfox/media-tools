@@ -2,7 +2,8 @@ from pathlib import Path
 from subprocess import Popen, PIPE
 from urllib.parse import urlparse
 
-from media_tools.core import App
+from media_tools.core import App, logs
+
 from . import sources, renderers
 
 
@@ -49,22 +50,22 @@ class TabsApp(App):
             print("-" * 80)
 
     def get_tabs_list(self, urls):
-        self.logs.info("Downloading tabs...")
+        logs.info("Downloading tabs...")
         tabs_list = []
         for url in urls:
-            self.logs.info(f"- fetch: {url}")
+            logs.info(f"- fetch: {url}")
             host = urlparse(url).hostname
             cl = sources.by_host[host]
 
             try:
                 tabs = cl.from_http(url)
                 tabs_list.append(tabs)
-                self.logs.success("  done!")
+                logs.success("  done!")
             except Exception as e:
                 import traceback
 
                 traceback.print_exc()
-                self.logs.error(f"  error: {e}")
+                logs.error(f"  error: {e}")
 
         tabs_list.sort(key=lambda t: (t.artist, t.title))
         return tabs_list
