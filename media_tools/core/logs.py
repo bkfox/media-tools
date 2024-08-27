@@ -33,7 +33,10 @@ class Logs:
         if format:
             msg = self.format(msg)
 
-        msg = f"\033[{color}m" + (f"[{key}]" if key else "") + (f"[{prefix}]" if prefix else "") + (f"{msg}\033[0m")
+        prefix = (f"[{key}]" if key else "") + (f"[{prefix}]" if prefix else "")
+        if prefix:
+            prefix = prefix + " "
+        msg = f"\033[{color}m" + prefix + (f"{msg}\033[0m")
         print(msg, *args)
 
     def out(self, *args, **kw):

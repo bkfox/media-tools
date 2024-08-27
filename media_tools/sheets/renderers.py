@@ -1,4 +1,7 @@
-from .tabs import Line
+from .sheet import Line
+
+
+__all__ = ("Renderer", "RtfRenderer")
 
 
 class Renderer:
@@ -6,17 +9,17 @@ class Renderer:
 
     template = "{text}"
 
-    tabs_sep = "\n\n\n"
-    tabs_template = "{heading}\n{sheet}\n\n{content}"
+    sheet_sep = "\n\n\n"
+    sheet_template = "{heading}\n{sheet}\n\n{content}"
 
     heading_sep = " - "
     heading_class = ""
     heading_template = "{text}"
 
-    sheet_sep = ", "
-    sheet_prefix = "Accords: "
-    sheet_class = ""
-    sheet_template = "{text}"
+    chords_sep = ", "
+    chords_prefix = "Accords: "
+    chords_class = ""
+    chords_template = "{text}"
 
     content_class = {}
     content_template = "{text}"
@@ -24,37 +27,37 @@ class Renderer:
     line_class = {}
     line_template = "{text}"
 
-    def render(self, tabs_list, **kwargs):
-        kwargs["text"] = self.tabs_sep.join(self.render_tabs(tabs, **kwargs) for tabs in (tabs_list or []))
+    def render(self, sheets, **kwargs):
+        kwargs["text"] = self.sheet_sep.join(self.render_sheet(sheet, **kwargs) for sheet in (sheets or []))
         return self.template.format(**kwargs)
 
-    def render_tabs(self, tabs, **kwargs):
+    def render_sheet(self, sheet, **kwargs):
         kwargs.update(
             {
-                "heading": self.get_heading(tabs),
-                "sheet": self.get_sheet(tabs),
-                "content": self.get_content(tabs),
+                "heading": self.get_heading(sheet),
+                "sheet": self.get_chords(sheet),
+                "content": self.get_content(sheet),
             }
         )
-        return self.tabs_template.format(**kwargs)
+        return self.sheet_template.format(**kwargs)
 
-    def get_heading(self, tabs):
+    def get_heading(self, sheet):
         artist = ""
-        if tabs.artist:
-            artist = " ".join(v.capitalize() for v in tabs.artist.split(" "))
+        if sheet.artist:
+            artist = " ".join(v.capitalize() for v in sheet.artist.split(" "))
 
-        text = self.heading_sep.join(h for h in (artist, tabs.title) if h)
+        text = self.heading_sep.join(h for h in (artist, sheet.title) if h)
         text = self.encode(text)
         return self.heading_template.format(text=text, cl=self.heading_class)
 
-    def get_sheet(self, tabs):
-        text = self.sheet_prefix + self.sheet_sep.join(tabs.chords)
+    def get_chords(self, sheet):
+        text = self.chords_prefix + self.chords_sep.join(sheet.chords)
         text = self.encode(text)
-        return self.sheet_template.format(text=text, cl=self.sheet_class)
+        return self.chords_template.format(text=text, cl=self.chords_class)
 
-    def get_content(self, tabs):
+    def get_content(self, sheet):
         lines = []
-        for line in tabs.lines:
+        for line in sheet.lines:
             text = self.encode(self.get_line(line))
             lines.append(text)
 
@@ -70,7 +73,7 @@ class Renderer:
         return text
 
 
-class RTFRenderer(Renderer):
+class RtfRenderer(Renderer):
     mime_type = "text/rtf"
 
     template = (
@@ -114,11 +117,11 @@ class RTFRenderer(Renderer):
         + "}}"
     )
 
-    tabs_template = (
+    sheet_template = (
         "\n{heading}\n{sheet}\n{content}\n"
         r"\par \pard\plain \s27\rtlch\af4\afs20 \ltrch\hich\af4\loch\sb0\sa0\f4\fs18\dbch\af4\ql\sb0\sa0\ltrpar\loch"
     )
-    tabs_sep = "\n\\page\n"
+    sheet_sep = "\n\\page\n"
 
     heading_sep = r" – "
     heading_class = r"\s2"
@@ -130,9 +133,9 @@ class RTFRenderer(Renderer):
         )
     )
 
-    sheet_prefix = "Accords\~: "
-    sheet_class = r"\s25"
-    sheet_template = (
+    chords_prefix = "Accords\~: "
+    chords_class = r"\s25"
+    chords_template = (
         r"\par \pard\plain {cl}\rtlch\af4\afs20 \ltrch\hich\af4\loch\sb0\sa227\brdrt\brdrnone"
         r"\brdrl\brdrnone\brdrb\brdrhair\brdrw1\brdrcf15\brsp28\brdrr\brdrnone\keepn\cf17\f4"
         r"\fs18\dbch\af4\ql\sb0\sa227\brdrt\brdrnone\brdrl\brdrnone\brdrb\brdrhair\brdrw1"

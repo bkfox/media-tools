@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
 
+from .logs import logs
+
 
 __all__ = ("action", "AppMeta", "App", "FilesApp")
 
@@ -66,7 +68,7 @@ class App(metaclass=AppMeta):
     """ConfigFile instance.
 
     If provided, add ``--config`` argument and load config as
-    ``context['conf']``.
+    ``context['conf']`` into application's context.
     """
 
     def load(self, subparsers=None):
@@ -90,13 +92,20 @@ class App(metaclass=AppMeta):
         if self.config_file:
             parser.add_argument("--config", nargs="*", help="Provide configuration file.")
 
-    def dispatch(self, **kwargs):
-        """Dispatch application."""
-        context = self.get_context(**kwargs)
+    def dispatch(self, argv=None, **kwargs):
+        """Dispatch application. From provided ``**kwargs``, get context then
+        return result of ``run()``.
+
+        :param list[str] argv: list of application arguments.
+        :param **kwargs: passed down as context variables.
+        """
+        context = self.get_context(argv=argv, **kwargs)
         return self.run(**context)
 
     def get_context(self, argv=None, **kwargs):
-        """
+        """From provided command line argument, return a dictionnary used as
+        context passed down to ``run``.
+
         :param [str] argv: list of argument to parse using parser.
         :param **kwargs: returned as context.
         """
@@ -106,12 +115,13 @@ class App(metaclass=AppMeta):
 
         if self.config_file:
             lookups = kwargs.get("config")
-            self.get_config(lookups)
+            kwargs["conf"] = self.get_config(lookups)
 
         return kwargs
 
-    def get_config(self, lookups, no_exc=False):
-        conf = self.config_file(lookups)
+    def get_config(self, lookups=None, no_exc=False):
+        """Return configuration read using ``config_file`` instance."""
+        conf = self.config_file.read(lookups)
         if not conf and not no_exc:
             lookups = lookups or self.config_file.lookups
             raise RuntimeError(
@@ -164,7 +174,7 @@ class FilesApp(App):
         missings = {path for path in paths if not path[0].exists()}
         if missings:
             lst = "\n".join(f" - {p}" for p in missings)
-            self.logs.warn(f"Following sources are missing and wont be proceed:\n{lst}")
+            logs.warn(f"Following sources are missing and wont be proceed:\n{lst}")
             paths = [path for path, _ in paths if path not in missings]
 
         # source files

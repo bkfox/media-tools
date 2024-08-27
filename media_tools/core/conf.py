@@ -36,6 +36,7 @@ class ConfigFile:
                     return self.get_object(**data)
             except Exception as err:
                 logs.warning(f"Reading file {path} raised an error: {err}")
+                raise
         return None
 
     def get_paths(self):
@@ -46,6 +47,7 @@ class ConfigFile:
         return (
             user_conf / "media_tools" / self.subdir,
             "/etc/media_tools" / self.subdir,
+            Path(__file__) / "../../config",
         )
 
     def parse(self, value):

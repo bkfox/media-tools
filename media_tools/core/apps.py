@@ -1,28 +1,30 @@
-import argparse
 from pathlib import Path
-import sys
 
 from .loader import Loader
 from .app import action, App
+from .logs import logs
 
 
-__all__ = ("search_paths", "Apps", "apps", "main")
-
-
-search_paths = (
-    ("media_tools", Path(__file__).parent.parent),
+__all__ = (
+    "search_paths",
+    "Apps",
+    "apps",
 )
-""" Search applications paths used by CLI tools. """
+
+
+search_paths = (("media_tools", Path(__file__).parent.parent),)
+"""Search applications paths used by CLI tools."""
 
 
 class Apps(App):
-    """ Handle dispatching to multiple registered applications. """
+    """Handle dispatching to multiple registered applications."""
+
     loader = None
-    """ Applications loader. """
+    """Applications loader."""
     subparsers = None
-    """ ArgumentParser's subparsers. """
+    """ArgumentParser's subparsers."""
     apps = {}
-    """ Registered applications. """
+    """Registered applications."""
 
     def __init__(self, children=None, loader=None):
         self.loader = loader
@@ -32,7 +34,7 @@ class Apps(App):
                 self.register(app=app)
 
     def register(self, app=None, **app_init_kwargs):
-        """ Register an application.
+        """Register an application.
 
         Two usages:
         - as class decorator: arguments are app init kwargs
@@ -45,17 +47,21 @@ class Apps(App):
         def wrapper(app_class):
             self._register(app_class(**app_init_kwargs))
             return app_class
+
         return wrapper
 
     def _register(self, app, name=""):
         name = name or app.name
         if app.name in self.apps:
-            raise KeyError(f"An application \"{name}\" is already registered")
+            raise KeyError(f'An application "{name}" is already registered')
         self.apps[name] = app
         return app
 
     def get(self, name):
-        """ Get application for the provided name. If not found, load it. """
+        """Get application for the provided name.
+
+        If not found, load it.
+        """
         if name not in self.apps:
             package = self.loader.load(name + ".apps")
             package and self.load_package(package)
@@ -82,8 +88,9 @@ class Apps(App):
         return apps
 
     def load(self, subparsers=None):
-        """ Load Apps instance. Initialize parser and applications.
-        :param Iterable[App] apps: load those apps instead 
+        """Load Apps instance. Initialize parser and applications.
+
+        :param Iterable[App] apps: load those apps instead
         """
         if self.parser:
             return self.parser
@@ -107,10 +114,10 @@ class Apps(App):
     def print_actions(self, **_):
         if not self.apps:
             self.load_all()
-        self.logs.out("Here is a list of available subcommand. Use `action --help` to get more info.\n")
+        logs.out("Here is a list of available subcommand. Use `action --help` to get more info.\n")
         for name, app in self.apps.items():
             if app:
-                self.logs.out(
+                logs.out(
                     f"**!!{app.label}!! ({app.name})**\n"
                     f"//Invokation: {self.name} {app.name}//\n"
                     f"//Help: {self.name} {app.name} --help//\n"
@@ -120,4 +127,3 @@ class Apps(App):
 
 
 apps = Apps(loader=Loader("apps", search_paths))
-
