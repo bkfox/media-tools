@@ -79,11 +79,17 @@ class Sheet:
     """Discovered chords."""
     path: Path | None = None
 
-    def __init__(self, lines: list[str] = "", chords: set[str] = set(), **kwargs):
-        self.chords = set(chords or [])
-        self.__dict__.update(**kwargs)
+    def __init__(self, lines: list[str] = "", chords: str | set[str] = None, tags: str | set[str] = None, **kwargs):
+        self.chords = self._as_set(chords)
+        self.tags = self._as_set(tags)
         if lines:
             self.lines = lines
+        self.__dict__.update(**kwargs)
+
+    def _as_set(self, value):
+        if isinstance(value, str):
+            return set(value.split(", "))
+        return value and set(value) or set()
 
     _lines = None
 
@@ -125,9 +131,9 @@ class Sheet:
         res = {
             "artist": self.artist,
             "title": self.title,
-            "tags": self.tags,
+            "tags": ", ".join(self.tags),
             "url": self.url,
-            "chords": list(self.chords),
+            "chords": ", ".join(self.chords),
             **kwargs,
         }
         if lines:
