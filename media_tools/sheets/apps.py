@@ -40,64 +40,100 @@ class SheetsApp(App):
         return {storage.file_ext: storage for storage in items}
 
     def init_parser(self, parser):
-        parser.add_argument("urls", nargs="*", type=str, metavar="URL")
-        parser.add_argument("-l", "--list", type=Path, help="Input URL list to fetch.")
-        # parser.add_argument("-c", "--clipboard", action="store_true", help="Copy to clipboard.")
-        parser.add_argument("-e", "--export", type=Path, help="Export all sheets to the provided file")
-        parser.add_argument("--export-tag", type=str, nargs="*", help="Only export sheets with provided tags")
-        parser.add_argument("--import-legacy", type=Path, help="Import legacy LibreOffice HTML export")
         parser.add_argument(
-            "--storage", "-s", type=Path, help=f"Storage file (supported: {', '.join(self.storages.keys())})"
+            "storages",
+            nargs="*",
+            type=Path,
+            metavar="INPUT",
+            help="Load those sheet files. If no `--output` is specified, use the last declared one as output.",
         )
+        parser.add_argument("output", type=Path, metavar="OUTPUT", help="Save results into this file.")
+
         parser.add_argument("--list-storages", action="store_true", help="List available storage formats.")
-        parser.add_argument("--force-download", action="store_true", help="Force download of already existing sheets")
+
+        group = parser.add_argument_group("Download")
+        group.add_argument("-l", "--download-list", type=Path, help="Input URL file list to download.")
+        group.add_argument("-d", "--download", type=str, nargs="*", help="Download provided urls")
+        group.add_argument("--force-download", action="store_true", help="Force download of already existing sheets")
+
+        group = parser.add_argument_group("Sheets")
+        group.add_argument("-t", "--tag", type=str, nargs="*", help="Select sheets with provided tags")
+        group.add_argument("--overwrite", action="store_true", help="Overwrite existing output file.")
+        group.add_argument("--merge", action="store_true", help="Merge new values with existing ones of output.")
 
     def run(
         self,
-        urls,
-        list=None,
-        clipboard=False,
-        storage=None,
-        force_download=False,
+        storages,
         list_storages=False,
-        export=None,
-        export_tag=None,
+        download=None,
+        download_list=None,
+        force_download=False,
+        output=None,
+        tag=None,
+        overwrite=False,
+        merge=False,
         **_,
     ):
         if list_storages:
             self.list_storages()
             return
 
-        urls = self.get_urls(urls, list)
+        storage = self.load_storages(storages)
+        logs.info(f"{len(storage)} sheets have been loaded.")
 
-        storage = self.get_storage(storage)
-        if storage and not force_download:
-            urls = {url for url in urls if url not in storage}
+        if output:
+            output = self.get_storage(output, load=merge)
+            merge and logs.info(f"Output loaded with {len(output)} sheets")
+            output.update(storage)
 
-        sheets = self.get_sheets(urls)
-        if sheets:
-            storage.update(sheets)
-            try:
-                storage.save()
-            except Exception as err:
-                logs.err(err)
-
-        if export:
-            self.export(export, export_tag, storage)
+        urls = self.get_urls(download, download_list, not force_download and output)
+        if urls:
+            sheets = self.download(urls)
+            if sheets:
+                output.update(sheets)
+        self.save(output, tag, overwrite=overwrite)
 
     def list_storages(self):
+        """List available storage types (print to stdou)"""
         for storage in self.storages.values():
             print(f"{storage.file_ext}: {storage.description}")
 
-    def get_urls(self, urls, path=None):
+    def load_storages(self, paths, **kwargs):
+        """Load storages from provided paths iterable, returning last one
+        updated with all loaded sheets."""
+        kwargs["load"] = True
+        last = None
+        for path in paths:
+            storage = self.get_storage(path, **kwargs)
+            if last:
+                storage.update(last)
+            last = storage
+        return last
+
+    def get_storage(self, path, **kwargs):
+        """Get Storage instance for the provided ``path``."""
+        if path is None:
+            return self.storages.Storage(path, **kwargs)
+
+        ext = path.suffix[1:]
+        if cls := self.storages.get(ext):
+            return cls(path, **kwargs)
+        raise ValueError(f"Storage file type {ext} not supported")
+
+    def get_urls(self, urls, path=None, storage=None):
+        """Return url list from provided urls and list-file, excluding thoses
+        matching sheets of provided storage."""
         urls = set(urls or [])
         if path:
             with open(path) as stream:
                 lines = stream.read().split("\n")
                 urls = urls | {line.strip() for line in lines if line}
+
+        if storage:
+            urls = {url for url in urls if url not in storage}
         return urls
 
-    def get_sheets(self, urls):
+    def download(self, urls):
         if not urls:
             logs.info("Nothing to download")
             return
@@ -122,20 +158,16 @@ class SheetsApp(App):
 
         return sheets
 
-    def export(self, path, tags, source):
-        storage = self.get_storage(path)
-        storage.update(source.items.values())
+    def save(self, storage, tags, overwrite=False):
+        if not overwrite and storage.path.exists():
+            confirm = input(f"Overwrite file ({storage.path}) [N/y]? ")
+            if not confirm or confirm not in "Yy":
+                logs.warn("Don't write over existing file: exit.")
+                return False
+
         filter = tags and (lambda item: any(t in item.tags for t in tags))
         storage.save(filter)
-
-    def get_storage(self, path):
-        if path is None:
-            return self.storages.Storage(path)
-
-        ext = path.suffix[1:]
-        if cls := self.storages.get(ext):
-            return cls(path)
-        raise ValueError(f"Storage file type {ext} not supported")
+        return True
 
     def to_clipboard(self, mime, text):
         process = Popen(["xclip", "-t", mime, "-selection", "clipboard"], stdin=PIPE)

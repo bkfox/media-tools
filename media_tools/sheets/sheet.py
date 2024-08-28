@@ -25,7 +25,7 @@ class Line:
 
     def __init__(self, type, text="", chords=None):
         self.type = type
-        self.text = text
+        self.text = text.replace(" ", " ")
         if type == self.Type.CHORDS:
             self.chords = chords and set(chords) or set()
 
@@ -88,8 +88,10 @@ class Sheet:
 
     def _as_set(self, value):
         if isinstance(value, str):
-            return set(value.split(", "))
-        return value and set(value) or set()
+            value = value.split(", ")
+        else:
+            value = value or []
+        return {v for v in value if v}
 
     _lines = None
 

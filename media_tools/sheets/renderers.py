@@ -76,6 +76,8 @@ class Renderer:
 class RtfRenderer(Renderer):
     mime_type = "text/rtf"
 
+    cols_width = 44
+
     template = (
         "\n".join(
             (
@@ -117,44 +119,23 @@ class RtfRenderer(Renderer):
         + "}}"
     )
 
-    sheet_template = (
-        "\n{heading}\n{sheet}\n{content}\n"
-        r"\par \pard\plain \s27\rtlch\af4\afs20 \ltrch\hich\af4\loch\sb0\sa0\f4\fs18\dbch\af4\ql\sb0\sa0\ltrpar\loch"
-    )
-    sheet_sep = "\n\\page\n"
+    sheet_template = r"\sprstsp\sprslnsp\keepn\loch\pgndec" "{heading}\n" "{sheet}\n" "{content}\n" r"\par\pard\s27"
+    sheet_sep = r"\page"
 
     heading_sep = r" – "
     heading_class = r"\s2"
-    heading_template = "\n".join(
-        (
-            r"\pgndec\pard\plain {cl}\rtlch\af9\alang1081 \ltrch\lang2060\langfe2052\loch\widctlpar"
-            r"\hyphpar0\ltrpar\cf0\fs24\lang2060\kerning1\dbch\langfe2052\pagebb\ql\ltrpar{{\loch",
-            r"{text}}}",
-        )
-    )
+    heading_template = r"\sect\sectd\sbknone\pard\plain{cl} {text}"
 
     chords_prefix = "Accords\~: "
     chords_class = r"\s25"
-    chords_template = (
-        r"\par \pard\plain {cl}\rtlch\af4\afs20 \ltrch\hich\af4\loch\sb0\sa227\brdrt\brdrnone"
-        r"\brdrl\brdrnone\brdrb\brdrhair\brdrw1\brdrcf15\brsp28\brdrr\brdrnone\keepn\cf17\f4"
-        r"\fs18\dbch\af4\ql\sb0\sa227\brdrt\brdrnone\brdrl\brdrnone\brdrb\brdrhair\brdrw1"
-        r"\brdrcf15\brsp28\brdrr\brdrnone\ltrpar{{\loch"
-        "\n{text}}}"
-    )
+    chords_template = r"\plain\par\pard{cl}{{\loch" "\n{text}}}"
 
     line_class = {
         Line.Type.LYRIC: r"\s27",
         Line.Type.CHORDS: r"\s26",
     }
-    line_template = "\n".join(
-        (
-            r"\par \pard\plain {cl}\rtlch\af4\afs20 \ltrch\hich\af4\loch\sb0\sa0\f4\fs18\dbch\af4\ql"
-            r"\ltrpar{{\loch\cs18\rtlch\af4 \ltrch\hich\af4\loch\f4\dbch\af4",
-            r"}}{{\loch\cs18\rtlch\af4 \ltrch\hich\af4\loch\f4\dbch\af4\loch",
-            r"{text}}}",
-        )
-    )
+    line_template = r"\par\pard\plain{cl}{{" "{text}}}"
+    empty_line_template = r"\par\pard\plain{cl}\keepn\dbch\ql\keepn\n"
 
     rtf_codes = {
         "’": "{\\'92}",
@@ -203,10 +184,12 @@ class RtfRenderer(Renderer):
         "ü": "{\\'fc}",
     }
 
-    empty_line_template = (
-        r"\par \pard\plain {cl}\rtlch\af5\afs20 \ltrch\hich\af5\loch\sb0\sa0\keepn\cf17\f5\fs18\dbch"
-        r"\af5\ql\keepn\ltrpar\loch\n"
-    )
+    def get_content(self, sheet):
+        content = super().get_content(sheet)
+        n = max(len(line) for line in sheet.lines)
+        if n < self.cols_width:
+            return r"\sectd\sect\sbknone\cols2{" + content + "}"
+        return r"\sectd\sect\sbknone{" + content + "}"
 
     def get_line(self, line):
         if not line.text:

@@ -1,5 +1,6 @@
+from __future__ import annotations
 import yaml
-from typing import Any, Iterable
+from typing import Iterable
 
 
 from media_tools.core import logs
@@ -15,8 +16,9 @@ class Storage:
     mime_type = ""
     file_ext = ""
     desc = ""
+    sheet_class = Sheet
 
-    def __init__(self, path, load=True):
+    def __init__(self, path, load=False):
         self.path = path
         self.items = {}
         if load:
@@ -26,7 +28,9 @@ class Storage:
     def get_key(cls, item):
         return item.url or (item.artist, item.title)
 
-    def update(self, items):
+    def update(self, items: Iterable[Sheet] | Storage):
+        if isinstance(items, Storage):
+            items = items.items.values()
         self.items.update((self.get_key(item), item) for item in items)
 
     def filter(self, pred):
@@ -46,23 +50,37 @@ class Storage:
         return list(items)
 
     def load(self):
+        """Load storage from file."""
         if self.path and self.path.exists():
             with open(self.path) as stream:
                 it = self.deserialize(self.path, stream)
                 it and self.update(it)
 
     def save(self, filter=None, sort=sort_key):
+        """Save storage to file."""
         if self.path:
             with open(self.path, "w") as stream:
                 items = self.get_items(filter, sort)
+                self.prepare_items(items)
+                logs.info(f"Save {len(items)} to {self.path}.")
                 content = self.serialize(self.path, items)
                 stream.write(content)
 
-    def deserialize(self, path, stream) -> Iterable[Any] | None:
+    def prepare_items(self, items):
+        for item in items:
+            if not item.chords:
+                item.done()
+
+    def deserialize(self, path, stream) -> Iterable[Sheet] | None:
+        """Read sheets from provided stream returning an iterable of Sheets."""
         return None
 
     def serialize(self, path, items) -> str:
+        """Serialize sheets in order to save them in to file."""
         return ""
+
+    def __len__(self):
+        return len(self.items)
 
     def __contains__(self, key):
         return key in self.items
@@ -85,7 +103,7 @@ class ISheetStorage(Storage):
             logs.warn(f"Missing content file for sheet {sheet}")
             return
         sheet["path"] = path
-        return Sheet(**sheet)
+        return self.sheet_class(**sheet)
 
     def serialize(self, path, items):
         data = []
@@ -105,7 +123,7 @@ class YamlStorage(Storage):
 
     def deserialize(self, path, stream):
         data = yaml.load(stream, Loader=yaml.Loader)
-        return data and (Sheet(**dats) for dats in data)
+        return data and (self.sheet_class(**dats) for dats in data)
 
     def serialize(self, path, items):
         items = [item.serialize() for item in items]
@@ -123,7 +141,7 @@ class RtfStorage(Storage):
 
     def serialize(self, path, items):
         renderer = renderers.RtfRenderer()
-        return renderer.render(items)
+        return renderer.render(items[:10])
 
 
 class LibreOfficeHTMLStorage(Storage):
@@ -189,7 +207,7 @@ class LibreOfficeHTMLStorage(Storage):
             line = Line(ty, text)
             lines.append(line)
 
-        return Sheet(lines=lines, chords=chords, artist=artist.strip(), title=title.strip())
+        return self.sheet_class(lines=lines, chords=chords, artist=artist.strip(), title=title.strip())
 
     def serialize(self, path, items):
         raise NotImplementedError("LibreOffice HTML writing is not supported.")
