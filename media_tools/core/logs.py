@@ -12,7 +12,7 @@ class Logs:
 
     _log_levels = {
         "out": (0, "", logging.INFO),
-        "info": (0, "I", logging.INFO),
+        "info": (34, "I", logging.INFO),
         "success": (92, "S", logging.INFO),
         "error": (91, "E", logging.ERROR),
         "warning": (33, "W", logging.WARNING),

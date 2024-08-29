@@ -1,3 +1,4 @@
+from datetime import date, datetime
 import enum
 from pathlib import Path
 from typing import Iterable
@@ -33,7 +34,10 @@ class Line:
     def from_string(cls, text):
         if not text:
             return cls(cls.Type.LYRIC, "")
-        type, text = text.split(" > ", maxsplit=1)
+        if " > " in text:
+            type, text = text.split(" > ", maxsplit=1)
+        else:
+            type, text = cls.Type.LYRIC, text
         return cls(cls.Type(type), text)
 
     def to_string(self):
@@ -78,12 +82,33 @@ class Sheet:
     chords: set[str] = set()
     """Discovered chords."""
     path: Path | None = None
+    """Path to lyrics file."""
+    version: date | None = None
+    """Add date."""
 
-    def __init__(self, lines: list[str] = "", chords: str | set[str] = None, tags: str | set[str] = None, **kwargs):
+    @property
+    def label(self):
+        if self.artist:
+            return f"{self.artist} -- {self.title}"
+        return self.title
+
+    def __init__(
+        self,
+        lines: list[str] = "",
+        chords: str | set[str] = None,
+        tags: str | set[str] = None,
+        version: date | None = None,
+        **kwargs,
+    ):
         self.chords = self._as_set(chords)
         self.tags = self._as_set(tags)
         if lines:
             self.lines = lines
+        if isinstance(date, str):
+            self.version = datetime.strptime(date, "%Y-%m-%d").date
+        else:
+            self.version = version or date.today()
+
         self.__dict__.update(**kwargs)
 
     def _as_set(self, value):
@@ -125,7 +150,8 @@ class Sheet:
             path = f"{self.title}"
 
         if self.url:
-            path += " -- {self.url.replace('/', '_')}"
+            post = self.url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "")
+            path += f" -- {post}"
         return path + ".txt"
 
     def serialize(self, lines=True, **kwargs):
@@ -133,6 +159,7 @@ class Sheet:
         res = {
             "artist": self.artist,
             "title": self.title,
+            "version": self.version,
             "tags": ", ".join(self.tags),
             "url": self.url,
             "chords": ", ".join(self.chords),
@@ -146,11 +173,15 @@ class Sheet:
 
     def done(self):
         self.chords = set()
-        for line in self.lines:
-            if "http://" in line.text or "https://" in line.text:
-                self.lines.remove(line)
-                continue
+        try:
+            for line in self.lines:
+                if "http://" in line.text or "https://" in line.text:
+                    self.lines.remove(line)
+                    continue
 
-            line.done()
-            if line.type == line.Type.CHORDS and line.chords:
-                self.chords |= set(line.chords)
+                line.done()
+                if line.type == line.Type.CHORDS and line.chords:
+                    self.chords |= set(line.chords)
+        except Exception:
+            breakpoint()
+            raise

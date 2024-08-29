@@ -1,3 +1,4 @@
+from datetime import datetime
 import inspect
 from functools import cached_property
 from pathlib import Path
@@ -10,6 +11,10 @@ from media_tools.core import App, logs
 __all__ = ("SheetsApp", "apps")
 
 
+def as_date(value):
+    return datetime.strptime(value, "%Y-%m-%d").date
+
+
 class SheetsApp(App):
     name = "sheets"
     label = "Guitare Sheets"
@@ -18,26 +23,14 @@ class SheetsApp(App):
     @cached_property
     def sources(self):
         """Source classes by host."""
-        from . import sources, sheet
+        from . import sources
 
         items = (
             item()
             for item in vars(sources).values()
-            if inspect.isclass(item) and issubclass(item, sheet.Sheet) and item.hosts
+            if inspect.isclass(item) and issubclass(item, sources.Source) and item.hosts
         )
         return {host: source for source in items for host in source.hosts}
-
-    @cached_property
-    def storages(self):
-        """Storage classes by file extension."""
-        from . import storage
-
-        items = (
-            item
-            for item in vars(storage).values()
-            if inspect.isclass(item) and issubclass(item, storage.Storage) and item.file_ext
-        )
-        return {storage.file_ext: storage for storage in items}
 
     def init_parser(self, parser):
         parser.add_argument(
@@ -50,14 +43,19 @@ class SheetsApp(App):
         parser.add_argument("output", type=Path, metavar="OUTPUT", help="Save results into this file.")
 
         parser.add_argument("--list-storages", action="store_true", help="List available storage formats.")
+        parser.add_argument("--list-metadata", action="store_true", help="List all metadata fetched from storages.")
+        parser.add_argument("--clean-up", action="store_true", help="Clean up doubled sheets")
 
         group = parser.add_argument_group("Download")
         group.add_argument("-l", "--download-list", type=Path, help="Input URL file list to download.")
-        group.add_argument("-d", "--download", type=str, nargs="*", help="Download provided urls")
+        group.add_argument("-d", "--download", type=str, action="append", help="Download provided urls")
         group.add_argument("--force-download", action="store_true", help="Force download of already existing sheets")
 
         group = parser.add_argument_group("Sheets")
-        group.add_argument("-t", "--tag", type=str, nargs="*", help="Select sheets with provided tags")
+        group.add_argument("--after", type=as_date, help="Select sheets added after this date (as 'yyyy-mm-dd')")
+        group.add_argument("--before", type=as_date, help="Select sheets added before this date (as 'yyyy-mm-dd')")
+        group.add_argument("--artist", type=str, action="append", help="Select sheets with provided artists")
+        group.add_argument("-t", "--tag", type=str, action="append", help="Select sheets with provided tags")
         group.add_argument("--overwrite", action="store_true", help="Overwrite existing output file.")
         group.add_argument("--merge", action="store_true", help="Merge new values with existing ones of output.")
 
@@ -65,60 +63,81 @@ class SheetsApp(App):
         self,
         storages,
         list_storages=False,
+        list_metadata=False,
+        clean_up=False,
         download=None,
         download_list=None,
         force_download=False,
         output=None,
-        tag=None,
-        overwrite=False,
         merge=False,
-        **_,
+        overwrite=False,
+        artist=None,
+        tag=None,
+        before=None,
+        after=None,
+        **kwargs,
     ):
         if list_storages:
             self.list_storages()
             return
 
-        storage = self.load_storages(storages)
-        logs.info(f"{len(storage)} sheets have been loaded.")
-
-        if output:
-            output = self.get_storage(output, load=merge)
-            merge and logs.info(f"Output loaded with {len(output)} sheets")
-            output.update(storage)
+        output = self.get_storage(output, storages, merge)
+        if list_metadata:
+            self.list_metadata(output)
+            return
 
         urls = self.get_urls(download, download_list, not force_download and output)
         if urls:
             sheets = self.download(urls)
             if sheets:
                 output.update(sheets)
-        self.save(output, tag, overwrite=overwrite)
+
+        if clean_up:
+            self.clean_up(output)
+
+        self.save(output, overwrite, artists=artist, tags=tag, before=before, after=after)
 
     def list_storages(self):
         """List available storage types (print to stdou)"""
         for storage in self.storages.values():
             print(f"{storage.file_ext}: {storage.description}")
 
-    def load_storages(self, paths, **kwargs):
-        """Load storages from provided paths iterable, returning last one
-        updated with all loaded sheets."""
-        kwargs["load"] = True
-        last = None
-        for path in paths:
-            storage = self.get_storage(path, **kwargs)
-            if last:
-                storage.update(last)
-            last = storage
-        return last
+    def list_metadata(self, storage):
+        if not len(storage):
+            logs.warn("No metadata to display.")
+            return
 
-    def get_storage(self, path, **kwargs):
-        """Get Storage instance for the provided ``path``."""
-        if path is None:
-            return self.storages.Storage(path, **kwargs)
+        metadatas = {}
+        for item in storage:
+            metadatas.setdefault("artists", set()).add(item.artist)
+            metadatas.setdefault("tags", set()).update(item.tags)
+            metadatas.setdefault("version", set()).add(item.version)
+            metadatas.setdefault("sheets", set()).add(f"{item.artist} -- {item.title}")
 
-        ext = path.suffix[1:]
-        if cls := self.storages.get(ext):
-            return cls(path, **kwargs)
-        raise ValueError(f"Storage file type {ext} not supported")
+        for key, values in metadatas.items():
+            print(f"{key}:")
+            for val in sorted(values):
+                val and print(f"  - {val}")
+
+    def clean_up(self, storage):
+        from .cleaner import Cleaner
+
+        Cleaner(storage).run()
+
+    def get_storage(self, path, inputs, merge=False):
+        from .storage import get_storage
+
+        merge = merge or not inputs
+        output = get_storage(path, load=merge)
+        if merge:
+            logs.info(f"Output loaded with {len(output)} sheets.")
+
+        for path in inputs:
+            logs.info(f"Load storage {path}")
+            output.load(path)
+
+        logs.info(f"{len(output)} sheets have been loaded.")
+        return output
 
     def get_urls(self, urls, path=None, storage=None):
         """Return url list from provided urls and list-file, excluding thoses
@@ -158,16 +177,40 @@ class SheetsApp(App):
 
         return sheets
 
-    def save(self, storage, tags, overwrite=False):
+    def save(self, storage, overwrite=False, **filters):
         if not overwrite and storage.path.exists():
             confirm = input(f"Overwrite file ({storage.path}) [N/y]? ")
             if not confirm or confirm not in "Yy":
                 logs.warn("Don't write over existing file: exit.")
                 return False
 
-        filter = tags and (lambda item: any(t in item.tags for t in tags))
+        filter = self.get_filter(**filters)
         storage.save(filter)
         return True
+
+    _tag_expr = "any(t in item.tags for t in tags)"
+    _artist_expr = "item.artist.lower() in artists"
+    _before_expr = "item.version < before"
+    _after_expr = "item.version > after"
+
+    def get_filter(self, artists=None, tags=None, before=None, after=None, **_):
+        expr = []
+        if artists:
+            expr.append(self._artist_expr)
+        if tags:
+            expr.append(self._tag_expr)
+        if before:
+            expr.append(self._before_expr)
+        if after:
+            expr.append(self._after_expr)
+        if not expr:
+            return None
+
+        expr = " and ".join(expr)
+        return eval(
+            f"lambda item: {expr}",
+            {"artists": {a.lower() for a in artists}, "tags": tags, "before": before, "after": after},
+        )
 
     def to_clipboard(self, mime, text):
         process = Popen(["xclip", "-t", mime, "-selection", "clipboard"], stdin=PIPE)

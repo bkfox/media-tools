@@ -2,7 +2,6 @@ import html
 import json
 import re
 
-import lxml.etree as ET
 import requests
 
 from .xml import XMLParser
@@ -21,8 +20,11 @@ class Source:
     """Source URL."""
 
     def from_http(self, url):
-        resp = requests.get(url)
+        resp = requests.get(
+            url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"}
+        )
         if resp.status_code != 200:
+            breakpoint()
             raise RuntimeError(f"Error loading {url}: response status: " f"{resp.status_code}.")
         return self.read(url, resp.text)
 
@@ -54,11 +56,12 @@ class Source:
         pass
 
 
-class BaseXMLSource(XMLParser, Sheet):
-    def read(self, text, **kwargs):
+class BaseXMLSource(XMLParser, Source):
+    # FIXME: there is a bug that remove escape characters from attributes
+    def read(self, url, text, **kwargs):
         # should be moved to parse()
         kwargs["root"] = self.parse_xml(text)
-        return super().read(text, **kwargs)
+        return super().read(url, text, **kwargs)
 
 
 class XMLSource(BaseXMLSource):
@@ -94,21 +97,16 @@ class XMLSource(BaseXMLSource):
         raise NotImplementedError("not implemented")
 
 
-class ReactSource(BaseXMLSource):
+class ReactSource(Source):
     """Extract data from a React application page."""
 
-    xml_parser = ET.HTMLParser
-    js_store_xpath = ""
-    js_store_attr = "data-content"
+    reg = re.compile(r'<div class="js-store" data-content="(?P<data>[^"]+)"')
 
-    def parse(self, text, root, **_):
-        if not self.js_store_xpath:
-            raise ValueError("`js_store_xpath` not provided")
-
-        node = root.find(self.js_store_xpath)
-        raw = node.attrib[self.js_store_attr]
-        raw = html.unescape(raw)
-        return json.loads(raw)
+    def parse(self, text, **kw):
+        m = self.reg.search(text)
+        data = m and m.groupdict().get("data")
+        data = data and html.unescape(data)
+        return data and json.loads(data)
 
 
 class InterleavedXMLSource(XMLSource):
@@ -158,7 +156,7 @@ class InterleavedXMLSource(XMLSource):
 
 
 class BACSource(InterleavedXMLSource):
-    hosts = ["boiteachansons.net", "www.boiteachansons.net"]
+    # hosts = ["boiteachansons.net", "www.boiteachansons.net"]
 
     artist_xpath = """.//div[@id="dTitreNomArtiste"]//h2"""
     title_xpath = """.//div[@class="dTitrePartition"]/h1"""

@@ -1,45 +1,52 @@
 from __future__ import annotations
-import yaml
-from typing import Iterable
+from pathlib import Path
+import inspect
+from typing import Any, Iterable
 
+import yaml
 
 from media_tools.core import logs
-from . import renderers
+from . import odf
 from .sheet import Line, Sheet
 from .xml import XMLParser
 
 
-__all__ = ("Storage", "YamlStorage")
+__all__ = ("Storage", "ISheetStorage", "YamlStorage", "OdfStorage", "LibreOfficeHTMLStorage")
 
 
-class Storage:
-    mime_type = ""
-    file_ext = ""
-    desc = ""
-    sheet_class = Sheet
+class SheetCollection:
+    items: dict[Any, Sheet] = None
 
-    def __init__(self, path, load=False):
-        self.path = path
-        self.items = {}
-        if load:
-            self.load()
+    def __init__(self, items: dict | None = None):
+        self.items = items or {}
+
+    @staticmethod
+    def sort_key(item):
+        """Return key to sort items."""
+        return item.artist, item.title
 
     @classmethod
     def get_key(cls, item):
+        """Get dict key for item."""
         return item.url or (item.artist, item.title)
 
-    def update(self, items: Iterable[Sheet] | Storage):
+    def update(self, items: Iterable[Sheet] | SheetCollection):
+        """Update collection with provided items."""
         if isinstance(items, Storage):
             items = items.items.values()
         self.items.update((self.get_key(item), item) for item in items)
 
     def filter(self, pred):
+        """Return an iterator of items using provided filter predicate."""
         return (item for item in self.items.values() if pred(item))
 
-    def sort_key(item):
-        return item.artist, item.title
+    def keep(self, pred):
+        """Keep only items matching provided predicate."""
+        self.items = {key: item for key, item in self.items if pred(item)}
 
     def get_items(self, filter=None, sort=sort_key):
+        """Return a list of items filtered by provided predicate and sorted
+        using sort key."""
         if filter:
             items = filter and self.filter(filter) or self.items.values()
         else:
@@ -49,22 +56,50 @@ class Storage:
             items = sorted(items, key=sort)
         return list(items)
 
-    def load(self):
-        """Load storage from file."""
-        if self.path and self.path.exists():
-            with open(self.path) as stream:
-                it = self.deserialize(self.path, stream)
+    def __iter__(self):
+        return iter(self.items.values())
+
+    def __len__(self):
+        return len(self.items)
+
+    def __contains__(self, key):
+        return key in self.items
+
+
+class Storage(SheetCollection):
+    mime_type = ""
+    file_ext = ""
+    file_mode = "t"
+    desc = ""
+    sheet_class = Sheet
+
+    def __init__(self, path, load=False, **kwargs):
+        self.path = path
+        super().__init__(**kwargs)
+        if load:
+            self.load()
+
+    def load(self, path=None):
+        """Load sheets from file into storage. When path is provided,
+        instanciate the corresponding Storage class instance and deserialize
+        from it.
+
+        :param Path path: if provided use this source file instead of provided one.
+        """
+        source = get_storage(path) if path else self
+        if source.path and source.path.exists():
+            with open(source.path, f"r+{self.file_mode}") as stream:
+                it = source.deserialize(source.path, stream)
                 it and self.update(it)
 
-    def save(self, filter=None, sort=sort_key):
+    def save(self, filter=None, sort=SheetCollection.sort_key):
         """Save storage to file."""
         if self.path:
-            with open(self.path, "w") as stream:
+            with open(self.path, f"w+{self.file_mode}") as stream:
                 items = self.get_items(filter, sort)
                 self.prepare_items(items)
                 logs.info(f"Save {len(items)} to {self.path}.")
-                content = self.serialize(self.path, items)
-                stream.write(content)
+                self.serialize(self.path, stream, items)
 
     def prepare_items(self, items):
         for item in items:
@@ -75,15 +110,9 @@ class Storage:
         """Read sheets from provided stream returning an iterable of Sheets."""
         return None
 
-    def serialize(self, path, items) -> str:
+    def serialize(self, path, stream, items) -> str:
         """Serialize sheets in order to save them in to file."""
         return ""
-
-    def __len__(self):
-        return len(self.items)
-
-    def __contains__(self, key):
-        return key in self.items
 
 
 class ISheetStorage(Storage):
@@ -105,7 +134,7 @@ class ISheetStorage(Storage):
         sheet["path"] = path
         return self.sheet_class(**sheet)
 
-    def serialize(self, path, items):
+    def serialize(self, path, stream, items):
         data = []
         dir = path.parent
         for item in items:
@@ -113,7 +142,7 @@ class ISheetStorage(Storage):
             item.path = item.path or (dir / item.get_filename())
             item.save_to_file(item.path)
             data.append(item.serialize(lines=False, path=str(item.path.relative_to(dir))))
-        return yaml.dump(data)
+        yaml.dump(data, stream)
 
 
 class YamlStorage(Storage):
@@ -125,23 +154,18 @@ class YamlStorage(Storage):
         data = yaml.load(stream, Loader=yaml.Loader)
         return data and (self.sheet_class(**dats) for dats in data)
 
-    def serialize(self, path, items):
+    def serialize(self, path, stream, items):
         items = [item.serialize() for item in items]
-        return yaml.dump(items)
+        yaml.dump(items, stream)
 
 
-class RtfStorage(Storage):
-    mime_type = "text/rtf"
-    file_ext = "rtf"
-    description = "Save sheets into RTF file (export only)."
+class OdfStorage(Storage):
+    file_ext = "odt"
+    file_mode = "b"
+    description = "Render sheets into ODT document"
 
-    def deserialize(self, path, stream):
-        pass
-        # raise NotImplementedError("RTF reading is not supported")
-
-    def serialize(self, path, items):
-        renderer = renderers.RtfRenderer()
-        return renderer.render(items[:10])
+    def serialize(self, path, stream, items):
+        odf.OdfRenderer().render(stream, items)
 
 
 class LibreOfficeHTMLStorage(Storage):
@@ -209,5 +233,19 @@ class LibreOfficeHTMLStorage(Storage):
 
         return self.sheet_class(lines=lines, chords=chords, artist=artist.strip(), title=title.strip())
 
-    def serialize(self, path, items):
+    def serialize(self, path, stream, items):
         raise NotImplementedError("LibreOffice HTML writing is not supported.")
+
+
+storages = (
+    item for item in list(globals().values()) if inspect.isclass(item) and issubclass(item, Storage) and item.file_ext
+)
+storages = {item.file_ext: item for item in storages}
+"""Storage classes by file extension."""
+
+
+def get_storage(path: Path, **kwargs):
+    """Return storage instance for the corresponding path or None."""
+    ext = path.suffix[1:]
+    cls = storages.get(ext)
+    return cls and cls(path, **kwargs)
