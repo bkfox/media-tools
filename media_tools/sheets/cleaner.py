@@ -6,6 +6,11 @@ from media_tools.core import logs
 __all__ = ("Cleaner",)
 
 
+class Editor:
+    def __init__(self, storage):
+        pass
+
+
 class Cleaner:
     def __init__(self, storage):
         self.storage = storage

@@ -45,6 +45,7 @@ class SheetsApp(App):
         parser.add_argument("--list-storages", action="store_true", help="List available storage formats.")
         parser.add_argument("--list-metadata", action="store_true", help="List all metadata fetched from storages.")
         parser.add_argument("--clean-up", action="store_true", help="Clean up doubled sheets")
+        parser.add_argument("--edit", action="store_true", help="Edit selected sheets")
 
         group = parser.add_argument_group("Download")
         group.add_argument("-l", "--download-list", type=Path, help="Input URL file list to download.")
